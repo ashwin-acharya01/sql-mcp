@@ -18,10 +18,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/db-mcp"
+    "url": "https://github.com/ashwin-acharya01/sql-mcp"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/sql-mcp/issues"
+    "url": "https://github.com/ashwin-acharya01/sql-mcp/issues"
   },
   "files": [
     "dist",
