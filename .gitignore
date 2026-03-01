@@ -1,0 +1,13 @@
+dist/
+node_modules/
+*.log
+
+# Ignore environment variable files
+.env
+.env.local
+
+# Ignore development specific docs
+docs/
+
+# Ignore package tarballs
+*.tgz

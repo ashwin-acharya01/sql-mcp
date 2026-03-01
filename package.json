@@ -1,0 +1,47 @@
+{
+  "name": "sql-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for SQL databases with guardrails against destructive operations",
+  "main": "./dist/index.js",
+  "type": "module",
+  "bin": {
+    "sql-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --target node18 --clean",
+    "dev": "tsup src/index.ts --format esm --target node18 --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["mcp", "database", "mssql", "postgresql", "sql", "mcp-server", "guardrails"],
+  "author": "Ashwin Acharya",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/db-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/sql-mcp/issues"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "dotenv": "^17.2.4",
+    "mssql": "^12.2.0",
+    "pg": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/mssql": "^9.1.9",
+    "@types/node": "^25.2.3",
+    "@types/pg": "^8.16.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
