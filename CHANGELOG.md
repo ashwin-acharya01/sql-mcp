@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2026-03-15
+
+### Added
+
+- **`analyze_query_impact` tool** — analyzes a destructive SQL query before execution: estimates affected row count, detects CASCADE relationships to child tables, and returns warnings and recommendations. Supports `DELETE`, `UPDATE`, `TRUNCATE`, and `DROP` for both MSSQL and PostgreSQL.
+- **Impact analysis in `run_query`** — in `confirm` mode, the impact analysis is automatically included in the hold response alongside the confirmation token.
+
+### Fixed
+
+- **Stacked query guard bypass** — queries like `SELECT 1; DROP TABLE foo` were not caught by the guard because only the first statement was checked. All statements in a semicolon-separated batch are now evaluated.
+- **Cross join inflation in row estimation** — `UPDATE`/`DELETE` queries using explicit `JOIN ... ON` syntax (MSSQL style) produced wildly incorrect row estimates due to an implicit cross join in the generated `SELECT COUNT(*)`. The count query now preserves explicit `JOIN ... ON` syntax reconstructed from the AST.
+
+---
+
 ## [0.1.0] - 2026-03-01
 
 Initial release.

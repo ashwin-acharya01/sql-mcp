@@ -65,3 +65,21 @@ export interface TableDescription {
 }
 
 export type GuardMode = "confirm" | "block";
+
+export type DmlOperation = "INSERT" | "UPDATE" | "DELETE" | "TRUNCATE" | "DROP" | "OTHER";
+
+export interface CascadeInfo {
+    table: string;
+    column: string;
+    on_delete: string;
+    estimated_rows: number | null;
+}
+
+export interface QueryImpact {
+    operation: DmlOperation;
+    table: string | null;
+    estimated_rows_affected: number | null;
+    cascades: CascadeInfo[];
+    warnings: string[];
+    recommendations: string[];
+}

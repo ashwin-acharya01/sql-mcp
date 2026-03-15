@@ -8,6 +8,7 @@ import { registerDescribeTable } from "./tools/describeTable";
 import { registerListTables } from "./tools/listTables";
 import { registerRunQuery } from "./tools/runQuery";
 import { registerConfirmQuery } from "./tools/confirmQuery";
+import { registerAnalyzeQueryImpact } from "./tools/analyzeQueryImpact";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(
@@ -23,6 +24,7 @@ registerDescribeTable(server);
 registerListTables(server);
 registerRunQuery(server);
 registerConfirmQuery(server);
+registerAnalyzeQueryImpact(server);
 
 const transport = new StdioServerTransport();
 server.connect(transport).then(() => {

@@ -191,6 +191,34 @@ Only works if the token exists and has not expired (5-minute TTL).
 
 ---
 
+### `analyze_query_impact`
+
+Analyzes a destructive SQL query without executing it. Returns an estimate of how many rows will be affected, any CASCADE relationships that will trigger on child tables, warnings, and recommendations.
+
+**Parameters**:
+- `sql` — the SQL query to analyze (`DELETE`, `UPDATE`, `TRUNCATE`, or `DROP`)
+
+**Returns**: operation type, target table, estimated rows affected, cascade details, warnings, and recommendations.
+
+```json
+{
+  "operation": "UPDATE",
+  "table": "public.orders",
+  "estimated_rows_affected": 3200,
+  "cascades": [],
+  "warnings": [],
+  "recommendations": [
+    "Large operation (3,200 rows). Consider batching with LIMIT to reduce lock duration."
+  ]
+}
+```
+
+For `DELETE`, `TRUNCATE`, and `DROP`, the response also includes `cascades` — child tables that have an `ON DELETE CASCADE` foreign key relationship with the target table. Cascade row counts are best-effort and may be `null` for complex queries.
+
+> **Note**: In `confirm` mode, `run_query` automatically includes impact analysis in its response when holding a guarded query — you do not need to call `analyze_query_impact` separately.
+
+---
+
 ## Requirements
 
 - Node.js ≥ 18
