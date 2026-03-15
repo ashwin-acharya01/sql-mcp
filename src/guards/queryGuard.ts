@@ -51,7 +51,7 @@ const purgeExpiredQueries = () => {
 export const isGuardedQuery = (sql: string) : boolean => {
     if (!guardedRegex) return false;
     if (!sql.trim()) return false;
-    return guardedRegex.test(sql);
+    return sql.split(';').some(stmt => guardedRegex!.test(stmt));
 }
 
 export const hasPendingQuery = () : boolean => {

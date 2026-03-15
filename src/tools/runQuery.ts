@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { executeQuery } from "../db/db";
+import { getAdapter } from "../db/index";
 import {
     isGuardedQuery,
     holdPendingQuery,
@@ -37,8 +38,14 @@ export function registerRunQuery(server: McpServer) {
                     };
                 }
 
-                // confirm mode — hold the query and return a token
+                // confirm mode — analyze impact then hold the query
                 const token = holdPendingQuery(trimmed);
+                let impact = null;
+                try {
+                    impact = await getAdapter().analyzeQueryImpact(trimmed);
+                } catch {
+                    // best-effort — don't block confirmation if analysis fails
+                }
                 return {
                     content: [{
                         type: "text",
@@ -49,6 +56,7 @@ export function registerRunQuery(server: McpServer) {
                             query: trimmed,
                             message: "This query contains a guarded operation. Call confirm_query with the token to execute it.",
                             expires_in_minutes: 5,
+                            impact,
                         }, null, 2)
                     }]
                 };

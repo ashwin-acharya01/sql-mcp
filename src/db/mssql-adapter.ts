@@ -1,6 +1,7 @@
 import sql, { type ConnectionPool } from 'mssql';
-import { type DatabaseConfig, type QueryResult, type TableSummary, type TableDescription } from '../types';
+import { type DatabaseConfig, type QueryResult, type TableSummary, type TableDescription, type QueryImpact, type CascadeInfo } from '../types';
 import { type DatabaseAdapter } from './adapter';
+import { parseQuery, buildCountQuery, buildWarnings } from './queryParser';
 
 const ROW_CAP = 1000;
 const SAMPLE_ROW_COUNT = 3;
@@ -213,6 +214,142 @@ export class MssqlAdapter implements DatabaseAdapter {
             indexes,
             sample_rows: sampleResult.rows ?? [],
         };
+    }
+
+    async analyzeQueryImpact(sql: string): Promise<QueryImpact> {
+        const parsed = parseQuery(sql, 'mssql');
+        const warnings = buildWarnings(parsed);
+        const recommendations: string[] = [];
+        const cascades: CascadeInfo[] = [];
+
+        const countQuery = buildCountQuery(sql, 'mssql');
+        const schemaName = parsed.schema ?? countQuery?.primarySchema ?? 'dbo';
+        const tblName = parsed.table ?? countQuery?.primaryTable ?? null;
+        let estimatedRows: number | null = null;
+
+        if (!tblName) {
+            if (parsed.operation === 'DELETE' || parsed.operation === 'UPDATE') {
+                recommendations.push('Could not parse table name — run a SELECT first to verify affected rows before executing.');
+            }
+            return { operation: parsed.operation, table: null, estimated_rows_affected: null, cascades, warnings, recommendations };
+        }
+
+        // Row estimation for DELETE / UPDATE
+        if (countQuery && (parsed.operation === 'DELETE' || parsed.operation === 'UPDATE')) {
+            try {
+                const countResult = await this.executeQuery(countQuery.sql);
+                estimatedRows = Number(countResult.rows?.[0]?.cnt ?? null);
+            } catch { /* best-effort */ }
+
+            if (estimatedRows === null) {
+                recommendations.push(`Could not estimate affected rows — run ${countQuery.sql} to verify before executing.`);
+            }
+        }
+
+        // Row estimation for TRUNCATE / DROP — fast count from sys.partitions, no full scan
+        if (parsed.operation === 'TRUNCATE' || parsed.operation === 'DROP') {
+            try {
+                const countResult = await this.executeQuery(`
+                    SELECT SUM(p.rows) AS cnt
+                    FROM sys.partitions p
+                    JOIN sys.tables t ON t.object_id = p.object_id
+                    JOIN sys.schemas s ON s.schema_id = t.schema_id
+                    WHERE p.index_id IN (0, 1)
+                      AND s.name = '${schemaName}'
+                      AND t.name = '${tblName}'
+                `);
+                estimatedRows = Number(countResult.rows?.[0]?.cnt ?? null);
+            } catch { /* best-effort */ }
+        }
+
+        // CASCADE analysis — relevant for DELETE / TRUNCATE / DROP
+        if (['DELETE', 'TRUNCATE', 'DROP'].includes(parsed.operation)) {
+            try {
+                const fkResult = await this.executeQuery(`
+                    SELECT
+                        OBJECT_SCHEMA_NAME(fk.parent_object_id) AS child_schema,
+                        OBJECT_NAME(fk.parent_object_id)         AS child_table,
+                        col.name                                 AS child_column,
+                        fk.delete_referential_action_desc        AS on_delete
+                    FROM sys.foreign_keys fk
+                    JOIN sys.foreign_key_columns ref ON fk.object_id = ref.constraint_object_id
+                    JOIN sys.columns col
+                        ON col.object_id = fk.parent_object_id
+                        AND col.column_id = ref.parent_column_id
+                    WHERE fk.referenced_object_id = OBJECT_ID('${schemaName}.${tblName}')
+                      AND fk.delete_referential_action_desc = 'CASCADE'
+                `);
+
+                for (const row of fkResult.rows ?? []) {
+                    let cascadeRows: number | null = null;
+                    try {
+                        if (parsed.operation === 'DELETE' && countQuery) {
+                            const pkCol = await this.getPrimaryKeyColumn(schemaName, tblName);
+                            const childCount = await this.executeQuery(`
+                                SELECT COUNT(*) AS cnt
+                                FROM [${row.child_schema}].[${row.child_table}] c
+                                WHERE c.[${row.child_column}] IN (
+                                    SELECT [${pkCol}] FROM [${schemaName}].[${tblName}]
+                                    ${parsed.hasWhereClause ? `WHERE ${countQuery.sql.match(/WHERE ([\s\S]+)$/i)?.[1] ?? ''}` : ''}
+                                )
+                            `);
+                            cascadeRows = Number(childCount.rows?.[0]?.cnt ?? null);
+                        } else {
+                            const childCount = await this.executeQuery(
+                                `SELECT COUNT(*) AS cnt FROM [${row.child_schema}].[${row.child_table}]`
+                            );
+                            cascadeRows = Number(childCount.rows?.[0]?.cnt ?? null);
+                        }
+                    } catch { /* best-effort */ }
+
+                    cascades.push({
+                        table: `${row.child_schema}.${row.child_table}`,
+                        column: String(row.child_column),
+                        on_delete: String(row.on_delete),
+                        estimated_rows: cascadeRows,
+                    });
+                }
+
+                if (cascades.length > 0) {
+                    warnings.push(`This operation will cascade to ${cascades.length} child table(s): ${cascades.map(c => c.table).join(', ')}.`);
+                }
+            } catch { /* best-effort */ }
+        }
+
+        // Recommendations
+        if (estimatedRows !== null && estimatedRows > 1000) {
+            recommendations.push(`Large operation (${estimatedRows.toLocaleString()} rows). Consider batching with TOP to reduce lock duration.`);
+        }
+        if (parsed.operation === 'DROP') {
+            recommendations.push(`Back up data before dropping: SELECT * INTO [${schemaName}].[${tblName}_backup] FROM [${schemaName}].[${tblName}].`);
+        }
+        if (parsed.operation === 'TRUNCATE') {
+            recommendations.push('Consider DELETE with a WHERE clause if you only want to remove specific rows.');
+        }
+
+        return {
+            operation: parsed.operation,
+            table: `${schemaName}.${tblName}`,
+            estimated_rows_affected: estimatedRows,
+            cascades,
+            warnings,
+            recommendations,
+        };
+    }
+
+    private async getPrimaryKeyColumn(schema: string, table: string): Promise<string> {
+        const result = await this.executeQuery(`
+            SELECT ku.COLUMN_NAME
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+            JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+                ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+                AND tc.TABLE_SCHEMA = ku.TABLE_SCHEMA
+                AND tc.TABLE_NAME = ku.TABLE_NAME
+            WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+              AND tc.TABLE_SCHEMA = '${schema}'
+              AND tc.TABLE_NAME = '${table}'
+        `);
+        return String(result.rows?.[0]?.COLUMN_NAME ?? 'id');
     }
 
     async closePool(): Promise<void> {
