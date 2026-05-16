@@ -1,3 +1,8 @@
+# ⚠️ Project Unmaintained & Unpublished
+
+> **Notice:** This project is no longer maintained. The corresponding npm package has been permanently unpublished from the npm registry and is no longer available for download. 
+
+***
 # sql-mcp
 
 An MCP (Model Context Protocol) server for SQL databases with built-in guardrails against destructive operations.
@@ -9,6 +14,11 @@ AI coding agents can execute SQL queries autonomously — which means they can a
 ---
 
 ## Installation
+
+### ⚠️ Package Removed
+
+This package has been removed from npm and is no longer available for installation.
+This repository is archived for reference only. The following commands would no longer work.
 
 ```bash
 # Run directly without installing
